@@ -1,4 +1,4 @@
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = "https://surplus-food-platform-iv6y.onrender.com/api";
 
 function saveTokens(access, refresh) {
   localStorage.setItem("access", access);
