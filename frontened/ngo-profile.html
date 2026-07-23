@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>NGO Profile</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="brand">🍲 Surplus Food Platform</div>
+    <button class="secondary" id="logoutBtn">Logout</button>
+  </nav>
+
+  <div class="container narrow">
+    <div class="tabs">
+      <a href="dashboard.html" class="tab-link">Donations</a>
+      <a href="ngo-profile.html" class="tab-link active">NGO Profile</a>
+    </div>
+
+    <h1>NGO Profile</h1>
+    <p class="subtitle" id="statusLine">Checking your profile...</p>
+
+    <div class="card">
+      <h2 id="formTitle">Complete Your NGO Profile</h2>
+      <form id="ngoForm">
+        <label>Organization Name</label>
+        <input type="text" id="orgName" required>
+        <label>Registration Number</label>
+        <input type="text" id="regNumber" required>
+        <label>Service Area Radius (km)</label>
+        <input type="number" id="radiusKm" value="10" required>
+        <button type="submit" id="submitBtn">Save Profile</button>
+      </form>
+      <p id="formMsg" class="msg"></p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    if (!getAccessToken()) window.location.href = "index.html";
+
+    document.getElementById("logoutBtn").addEventListener("click", logout);
+
+    let profileExists = false;
+
+    // Try to load an existing profile
+    async function loadProfile() {
+      const res = await apiFetch("/ngo-profile/");
+      const statusLine = document.getElementById("statusLine");
+      const formTitle = document.getElementById("formTitle");
+      const submitBtn = document.getElementById("submitBtn");
+
+      if (res.status === 404) {
+        // No profile yet — user needs to create one
+        statusLine.textContent = "You haven't created your NGO profile yet.";
+        return;
+      }
+
+      const data = await res.json();
+
+      if (res.ok) {
+        profileExists = true;
+        document.getElementById("orgName").value = data.org_name;
+        document.getElementById("regNumber").value = data.registration_number;
+        document.getElementById("radiusKm").value = data.service_area_radius_km;
+
+        formTitle.textContent = "Update Your NGO Profile";
+        submitBtn.textContent = "Update Profile";
+
+        statusLine.innerHTML = data.verified_by_admin
+          ? `<span class="badge available">Verified</span> Your NGO is verified — you can request donations.`
+          : `<span class="badge requested">Pending Verification</span> An admin needs to approve your NGO before you can request donations.`;
+      } else {
+        statusLine.textContent = JSON.stringify(data);
+      }
+    }
+
+    document.getElementById("ngoForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = {
+        org_name: document.getElementById("orgName").value,
+        registration_number: document.getElementById("regNumber").value,
+        service_area_radius_km: document.getElementById("radiusKm").value,
+      };
+
+      const url = profileExists ? "/ngo-profile/" : "/ngo-profile/create/";
+      const method = profileExists ? "PATCH" : "POST";
+
+      const res = await apiFetch(url, { method, body: JSON.stringify(body) });
+      const data = await res.json();
+      const msgEl = document.getElementById("formMsg");
+
+      if (res.ok) {
+        msgEl.className = "msg success";
+        msgEl.textContent = "Saved!";
+        loadProfile();
+      } else {
+        msgEl.className = "msg error";
+        msgEl.textContent = JSON.stringify(data);
+      }
+    });
+
+    loadProfile();
+  </script>
+</body>
+</html>

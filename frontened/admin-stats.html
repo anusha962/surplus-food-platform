@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="brand">🍲 Surplus Food Platform — Admin</div>
+    <button class="secondary" id="logoutBtn">Logout</button>
+  </nav>
+
+  <div class="container">
+    <h1>Platform Analytics</h1>
+    <p class="subtitle">Overview of donations, NGOs, and impact.</p>
+
+    <div id="statsGrid" class="donation-grid">Loading...</div>
+
+    <div class="card" style="margin-top:2rem;">
+      <h2>Donation Status Breakdown</h2>
+      <div id="statusBreakdown"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    if (!getAccessToken()) window.location.href = "index.html";
+
+    document.getElementById("logoutBtn").addEventListener("click", logout);
+
+    function statCard(label, value, badgeClass) {
+      return `
+        <div class="donation-card">
+          <div class="meta">${label}</div>
+          <div style="font-size:2rem; font-weight:700; margin-top:0.3rem;" class="${badgeClass || ''}">${value}</div>
+        </div>
+      `;
+    }
+
+    async function loadAnalytics() {
+      const res = await apiFetch("/analytics/");
+      const grid = document.getElementById("statsGrid");
+      const breakdown = document.getElementById("statusBreakdown");
+
+      if (!res.ok) {
+        const err = await res.json();
+        grid.innerHTML = `<div class="empty-state">${err.detail || "You don't have access to this page (admin role required)."}</div>`;
+        return;
+      }
+
+      const data = await res.json();
+
+      grid.innerHTML = [
+        statCard("Total Donations", data.total_donations),
+        statCard("Meals Saved (Picked Up)", data.meals_saved),
+        statCard("Completed Requests", data.completed_requests),
+        statCard("Active NGOs", data.active_ngos),
+        statCard("Pending NGO Verifications", data.pending_ngos),
+        statCard("Expiry Wastage Rate", data.expiry_wastage_rate_percent + "%"),
+      ].join("");
+
+      const s = data.status_breakdown;
+      breakdown.innerHTML = `
+        <div class="meta">Available: <strong>${s.available}</strong></div>
+        <div class="meta">Requested: <strong>${s.requested}</strong></div>
+        <div class="meta">Picked Up: <strong>${s.picked_up}</strong></div>
+        <div class="meta">Expired: <strong>${s.expired}</strong></div>
+      `;
+    }
+
+    loadAnalytics();
+  </script>
+</body>
+</html>

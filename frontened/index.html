@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Anna Setu — Surplus Food Network</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="brand">🌾 Anna Setu<span class="tagline">Surplus Food Network</span></div>
+  </nav>
+
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" id="loginTabBtn">Log In</button>
+        <button type="button" class="auth-tab" id="registerTabBtn">Register</button>
+      </div>
+
+      <div class="auth-body">
+        <div class="auth-form active" id="loginForm-wrap">
+          <h1>Welcome back</h1>
+          <p class="subtitle">Rescue surplus food, feed your community.</p>
+          <form id="loginForm">
+            <label>Username</label>
+            <input type="text" id="loginUsername" required>
+            <label>Password</label>
+            <input type="password" id="loginPassword" required>
+            <button type="submit">Log In</button>
+          </form>
+          <p id="loginMsg" class="msg error"></p>
+        </div>
+
+        <div class="auth-form" id="registerForm-wrap">
+          <h1>Create an account</h1>
+          <p class="subtitle">Join as a donor, NGO, or volunteer.</p>
+          <form id="registerForm">
+            <label>Username</label>
+            <input type="text" id="regUsername" required>
+            <label>Email</label>
+            <input type="email" id="regEmail" required>
+            <label>Password</label>
+            <input type="password" id="regPassword" required>
+            <label>Confirm Password</label>
+            <input type="password" id="regPassword2" required>
+            <label>I am a...</label>
+            <select id="regRole">
+              <option value="donor">Donor</option>
+              <option value="ngo">NGO</option>
+              <option value="volunteer">Volunteer</option>
+            </select>
+            <button type="submit">Register</button>
+          </form>
+          <p id="registerMsg" class="msg error"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    const loginTabBtn = document.getElementById("loginTabBtn");
+    const registerTabBtn = document.getElementById("registerTabBtn");
+    const loginWrap = document.getElementById("loginForm-wrap");
+    const registerWrap = document.getElementById("registerForm-wrap");
+
+    loginTabBtn.addEventListener("click", () => {
+      loginTabBtn.classList.add("active");
+      registerTabBtn.classList.remove("active");
+      loginWrap.classList.add("active");
+      registerWrap.classList.remove("active");
+    });
+
+    registerTabBtn.addEventListener("click", () => {
+      registerTabBtn.classList.add("active");
+      loginTabBtn.classList.remove("active");
+      registerWrap.classList.add("active");
+      loginWrap.classList.remove("active");
+    });
+
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("loginUsername").value;
+      const password = document.getElementById("loginPassword").value;
+      const res = await fetch(`${API_BASE}/login/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      const msgEl = document.getElementById("loginMsg");
+      if (res.ok) {
+        saveTokens(data.access, data.refresh);
+        window.location.href = "dashboard.html";
+      } else {
+        msgEl.className = "msg error";
+        msgEl.textContent = data.detail || JSON.stringify(data);
+      }
+    });
+
+    document.getElementById("registerForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = {
+        username: document.getElementById("regUsername").value,
+        email: document.getElementById("regEmail").value,
+        password: document.getElementById("regPassword").value,
+        password2: document.getElementById("regPassword2").value,
+        role: document.getElementById("regRole").value,
+      };
+      const res = await fetch(`${API_BASE}/register/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      const msgEl = document.getElementById("registerMsg");
+      if (res.ok) {
+        msgEl.className = "msg success";
+        msgEl.textContent = "Registered! Switch to Log In to continue.";
+      } else {
+        msgEl.className = "msg error";
+        msgEl.textContent = JSON.stringify(data);
+      }
+    });
+  </script>
+</body>
+</html>

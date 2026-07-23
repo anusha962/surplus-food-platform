@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="brand">🌾 Anna Setu<span class="tagline">Surplus Food Network</span></div>
+    <div style="display:flex; align-items:center; gap:1rem;">
+      <div style="position:relative; cursor:pointer;" id="bellWrap">
+        <span style="font-size:1.4rem;">🔔</span>
+        <span id="unreadBadge" style="display:none; position:absolute; top:-6px; right:-8px; background:var(--clay); color:white; font-size:0.7rem; font-weight:700; padding:1px 5px; border-radius:999px;">0</span>
+      </div>
+      <button class="secondary" id="logoutBtn">Logout</button>
+    </div>
+  </nav>
+
+  <div id="notifDropdown" style="display:none; position:fixed; top:60px; right:2rem; width:320px; max-height:400px; overflow-y:auto; background:white; border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); z-index:100; padding:0.5rem;"></div>
+
+  <div class="container">
+    <div class="tabs">
+      <a href="dashboard.html" class="tab-link active">Donations</a>
+      <a href="ngo-profile.html" class="tab-link">NGO Profile</a>
+    </div>
+
+    <div class="hero">
+      <h1>Rescue what's left, feed what's next.</h1>
+      <p class="subtitle">Post surplus food in minutes, or find what's available near you right now.</p>
+      <div class="hero-stats">
+        <span class="hero-stat" id="heroAvailable">— available</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Post Surplus Food</h2>
+      <form id="donationForm">
+        <label>Food name</label>
+        <input type="text" id="foodName" placeholder="e.g. Veg Biryani" required>
+        <label>Quantity</label>
+        <input type="number" id="quantity" step="0.01" required>
+        <label>Unit</label>
+        <input type="text" id="unit" placeholder="e.g. plates, kg" required>
+        <label>Expires at</label>
+        <input type="datetime-local" id="expiryTime" required>
+        <label>Photo (optional, runs AI check)</label>
+        <input type="file" id="foodImage" accept="image/*">
+        <button type="submit">Post Donation</button>
+      </form>
+      <p id="postMsg" class="msg"></p>
+    </div>
+
+    <h2 style="margin-top: 2.5rem;">Available Donations</h2>
+    <button id="nearbyBtn" style="width:auto; padding:0.5rem 1rem;">Show Nearby Only (10km)</button>
+    <button id="allBtn" style="width:auto; padding:0.5rem 1rem;">Show All</button>
+    <div id="donationList" class="donation-grid" style="margin-top:1rem;">Loading...</div>
+
+    <h2 style="margin-top: 2.5rem;">My Requests / Incoming Requests</h2>
+    <div id="requestList" class="donation-grid">Loading...</div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    if (!getAccessToken()) window.location.href = "index.html";
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        window.lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      });
+    }
+
+    document.getElementById("logoutBtn").addEventListener("click", logout);
+
+    document.getElementById("donationForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData();
+      formData.append("food_name", document.getElementById("foodName").value);
+      formData.append("quantity", document.getElementById("quantity").value);
+      formData.append("unit", document.getElementById("unit").value);
+      formData.append("expiry_time", new Date(document.getElementById("expiryTime").value).toISOString());
+      if (window.lastKnownPosition) {
+        formData.append("latitude", window.lastKnownPosition.lat.toFixed(6));
+        formData.append("longitude", window.lastKnownPosition.lng.toFixed(6));
+      }
+      const imageFile = document.getElementById("foodImage").files[0];
+      if (imageFile) {
+        formData.append("image", imageFile);
+      }
+
+      const res = await apiFetch("/donations/", { method: "POST", body: formData });
+      const data = await res.json();
+      const msgEl = document.getElementById("postMsg");
+      if (res.ok) {
+        msgEl.className = "msg success";
+        msgEl.textContent = "Posted successfully!";
+        document.getElementById("donationForm").reset();
+        loadDonations();
+      } else {
+        msgEl.className = "msg error";
+        msgEl.textContent = JSON.stringify(data);
+      }
+    });
+
+    function renderDonationCards(items, listEl) {
+      if (!items.length) {
+        listEl.innerHTML = `<div class="empty-state">No donations found.</div>`;
+        return;
+      }
+      listEl.innerHTML = items.map(d => `
+        <div class="donation-card">
+          ${d.image ? `<img src="${d.image}" style="width:100%; height:140px; object-fit:cover; border-radius:8px; margin-bottom:0.6rem;">` : ''}
+          <div class="food-name">${d.food_name}</div>
+          <div class="meta">${d.quantity} ${d.unit}</div>
+          <div class="meta">Expires: ${new Date(d.expiry_time).toLocaleString()}</div>
+          <div class="meta">Posted by ${d.donor}</div>
+          ${d.distance_km !== undefined ? `<div class="meta">${d.distance_km} km away</div>` : ''}
+          <span class="badge ${d.status}">${d.status.replace('_', ' ')}</span>
+          ${d.status === 'available' ? `<button class="request-btn" data-id="${d.id}">Request This</button>` : ''}
+        </div>
+      `).join("");
+
+      document.querySelectorAll('.request-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const res = await apiFetch('/requests/', { method: 'POST', body: JSON.stringify({ donation: btn.dataset.id }) });
+          const data = await res.json();
+          if (res.ok) { alert('Request sent!'); loadDonations(); } else { alert(JSON.stringify(data)); }
+        });
+      });
+    }
+
+    async function loadDonations() {
+      const listEl = document.getElementById("donationList");
+      const res = await apiFetch("/donations/");
+      const data = await res.json();
+      const items = data.results || data;
+      renderDonationCards(items, listEl);
+      const availableCount = items.filter(d => d.status === 'available').length;
+      document.getElementById("heroAvailable").textContent = `${availableCount} available`;
+    }
+
+    document.getElementById("nearbyBtn").addEventListener("click", async () => {
+      if (!window.lastKnownPosition) {
+        alert("Location not available yet — allow location access in your browser and try again.");
+        return;
+      }
+      const { lat, lng } = window.lastKnownPosition;
+      const res = await apiFetch(`/donations/nearby/?lat=${lat}&lng=${lng}&radius_km=10`);
+      const items = await res.json();
+      renderDonationCards(items, document.getElementById("donationList"));
+    });
+
+    document.getElementById("allBtn").addEventListener("click", loadDonations);
+
+    async function loadRequests() {
+      const listEl = document.getElementById("requestList");
+      const res = await apiFetch("/requests/");
+      const data = await res.json();
+      const items = data.results || data;
+
+      if (!items.length) {
+        listEl.innerHTML = `<div class="empty-state">No requests yet.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = items.map(r => `
+        <div class="donation-card">
+          <div class="food-name">${r.donation_name}</div>
+          <div class="meta">Requested by: ${r.requested_by_username}</div>
+          <div class="meta">Donor: ${r.donor_username}</div>
+          <span class="badge ${r.status}">${r.status}</span>
+          ${r.status === 'pending' ? `
+            <button class="accept-btn" data-id="${r.id}">Accept</button>
+            <button class="reject-btn secondary" data-id="${r.id}" style="margin-top:0.5rem;">Reject</button>
+          ` : ''}
+          ${r.status === 'accepted' ? `<button class="complete-btn" data-id="${r.id}">Mark Picked Up</button>` : ''}
+        </div>
+      `).join("");
+
+      document.querySelectorAll('.accept-btn').forEach(btn => {
+        btn.addEventListener('click', () => actOnRequest(btn.dataset.id, 'accept'));
+      });
+      document.querySelectorAll('.reject-btn').forEach(btn => {
+        btn.addEventListener('click', () => actOnRequest(btn.dataset.id, 'reject'));
+      });
+      document.querySelectorAll('.complete-btn').forEach(btn => {
+        btn.addEventListener('click', () => actOnRequest(btn.dataset.id, 'complete'));
+      });
+    }
+
+    async function actOnRequest(id, action) {
+      const res = await apiFetch(`/requests/${id}/${action}/`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        loadRequests();
+        loadDonations();
+      } else {
+        alert(JSON.stringify(data));
+      }
+    }
+
+    async function loadUnreadCount() {
+      const res = await apiFetch("/notifications/unread-count/");
+      const data = await res.json();
+      const badge = document.getElementById("unreadBadge");
+      if (data.unread_count > 0) {
+        badge.textContent = data.unread_count;
+        badge.style.display = "inline-block";
+      } else {
+        badge.style.display = "none";
+      }
+    }
+
+    document.getElementById("bellWrap").addEventListener("click", async () => {
+      const dropdown = document.getElementById("notifDropdown");
+      if (dropdown.style.display === "block") {
+        dropdown.style.display = "none";
+        return;
+      }
+      const res = await apiFetch("/notifications/");
+      const data = await res.json();
+      const items = data.results || data;
+
+      dropdown.innerHTML = items.length
+        ? items.map(n => `
+            <div style="padding:0.6rem; border-bottom:1px solid var(--border); ${n.is_read ? 'opacity:0.55;' : ''}">
+              <div style="font-size:0.85rem;">${n.message}</div>
+              <div style="font-size:0.7rem; color:var(--muted); margin-top:2px;">${new Date(n.created_at).toLocaleString()}</div>
+              ${!n.is_read ? `<button class="mark-read-btn" data-id="${n.id}" style="width:auto; padding:0.2rem 0.5rem; font-size:0.7rem; margin-top:0.3rem;">Mark read</button>` : ''}
+            </div>
+          `).join("")
+        : `<div class="empty-state" style="padding:1rem;">No notifications yet.</div>`;
+
+      dropdown.style.display = "block";
+
+      document.querySelectorAll(".mark-read-btn").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          await apiFetch(`/notifications/${btn.dataset.id}/read/`, { method: "POST" });
+          loadUnreadCount();
+          document.getElementById("bellWrap").click();
+          document.getElementById("bellWrap").click();
+        });
+      });
+    });
+
+    loadDonations();
+    loadRequests();
+    loadUnreadCount();
+    setInterval(loadUnreadCount, 15000);
+  </script>
+</body>
+</html>
